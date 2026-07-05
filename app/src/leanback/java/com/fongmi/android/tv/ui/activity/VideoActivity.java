@@ -1964,7 +1964,9 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
     private boolean onEpisodeKey(KeyEvent event) {
         if (!KeyUtil.isActionDown(event)) return false;
         RecyclerView episodeView = episodeGridMode ? mBinding.episodeGrid : mBinding.episode;
-        RecyclerView.ViewHolder holder = episodeView.findContainingViewHolder(getCurrentFocus());
+        View focused = getCurrentFocus();
+        if (focused == null) return false;
+        RecyclerView.ViewHolder holder = episodeView.findContainingViewHolder(focused);
         if (holder == null) return false;
         int position = holder.getBindingAdapterPosition();
         if (position == RecyclerView.NO_POSITION) return false;

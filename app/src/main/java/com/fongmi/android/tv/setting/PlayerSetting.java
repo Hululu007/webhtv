@@ -16,6 +16,9 @@ public class PlayerSetting {
     public static final int RENDER_TEXTURE = 1;
     public static final int PAD_LIVE_FULLSCREEN = 0;
     public static final int PAD_LIVE_STANDARD = 1;
+    public static final int FLAG_PLAY_AUTO = 0;
+    public static final int FLAG_PLAY_MANUAL = 1;
+    public static final int FLAG_PLAY_SEMI = 2;
     private static final int DEFAULT_PLAY_CACHE_OPTION = 0;
     private static final String KEY_DISPLAY_TIME = "display_time";
     private static final String KEY_DISPLAY_TRAFFIC = "display_traffic";
@@ -91,6 +94,23 @@ public class PlayerSetting {
 
     public static boolean isPadLiveFullscreen() {
         return getPadLiveMode() == PAD_LIVE_FULLSCREEN;
+    }
+
+    public static int getFlagPlay() {
+        int mode = Prefers.getInt("flag_play", FLAG_PLAY_AUTO);
+        return (mode == FLAG_PLAY_MANUAL || mode == FLAG_PLAY_SEMI) ? mode : FLAG_PLAY_AUTO;
+    }
+
+    public static void putFlagPlay(int mode) {
+        Prefers.put("flag_play", (mode == FLAG_PLAY_MANUAL || mode == FLAG_PLAY_SEMI) ? mode : FLAG_PLAY_AUTO);
+    }
+
+    public static boolean isEpisodeAutoPlay() {
+        return getFlagPlay() != FLAG_PLAY_MANUAL;
+    }
+
+    public static boolean isFlagAutoPlay() {
+        return getFlagPlay() == FLAG_PLAY_AUTO;
     }
 
     public static int getSize() {

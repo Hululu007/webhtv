@@ -853,6 +853,7 @@
     <string name="player_preload_time">预载时间</string>
     <string name="player_preload_time_value">%1$d 秒</string>
     <string name="player_auto_change">自动换源</string>
+    <string name="player_flag">线路播放</string>
     <string name="player_speed">长按倍速</string>
     <string name="player_ua">User-Agent</string>
     <string name="player_osd">屏显设置</string>
@@ -1128,6 +1129,12 @@
         <item>关闭</item>
         <item>自动跳过</item>
         <item>弹框确认</item>
+    </string-array>
+
+    <string-array name="select_flag">
+        <item>全自动</item>
+        <item>手动</item>
+        <item>半自动</item>
     </string-array>
 
     <string-array name="select_site_column">

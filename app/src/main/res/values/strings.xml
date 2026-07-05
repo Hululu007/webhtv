@@ -855,6 +855,7 @@
     <string name="player_preload_time">Preload time</string>
     <string name="player_preload_time_value">%1$d seconds</string>
     <string name="player_auto_change">Auto source change</string>
+    <string name="player_flag">Flag play</string>
     <string name="player_speed">Press speed</string>
     <string name="player_ua">User-Agent</string>
     <string name="player_osd">On-screen display</string>
@@ -1145,6 +1146,12 @@
         <item>Off</item>
         <item>Auto skip</item>
         <item>Ask to confirm</item>
+    </string-array>
+
+    <string-array name="select_flag">
+        <item>Full auto</item>
+        <item>Manual</item>
+        <item>Half auto</item>
     </string-array>
 
     <string-array name="select_site_column">

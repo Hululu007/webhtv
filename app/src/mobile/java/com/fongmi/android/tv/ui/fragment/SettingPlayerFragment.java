@@ -48,6 +48,7 @@ public class SettingPlayerFragment extends BaseFragment implements UaListener, B
     private String[] scale;
     private String[] osd;
     private String[] introSkipMode;
+    private String[] flagPlay;
 
     public static SettingPlayerFragment newInstance() {
         return new SettingPlayerFragment();
@@ -80,6 +81,7 @@ public class SettingPlayerFragment extends BaseFragment implements UaListener, B
         setPreloadText();
         mBinding.autoChangeText.setText(getSwitch(PlayerSetting.isAutoChange()));
         mBinding.autoSkipIntroOutroText.setText((introSkipMode = ResUtil.getStringArray(R.array.select_auto_skip_intro_outro))[Setting.getIntroSkipMode()]);
+        mBinding.flagPlayText.setText((flagPlay = ResUtil.getStringArray(R.array.select_flag))[PlayerSetting.getFlagPlay()]);
         mBinding.musicNotificationText.setText(getSwitch(PlayerSetting.isMusicNotification()));
         mBinding.audioBookNotificationText.setText(getSwitch(PlayerSetting.isAudioBookNotification()));
         mBinding.audioDecodeText.setText(getSwitch(PlayerSetting.isAudioPrefer()));
@@ -116,6 +118,7 @@ public class SettingPlayerFragment extends BaseFragment implements UaListener, B
         mBinding.preloadTime.setOnClickListener(this::onPreloadTime);
         mBinding.autoChange.setOnClickListener(this::setAutoChange);
         mBinding.autoSkipIntroOutro.setOnClickListener(this::setAutoSkipIntroOutro);
+        mBinding.flagPlay.setOnClickListener(this::onFlagPlay);
         mBinding.render.setOnClickListener(this::setRender);
         mBinding.tunnel.setOnClickListener(this::setTunnel);
         mBinding.exo4kCompat.setOnClickListener(this::setExo4KCompat);
@@ -335,6 +338,14 @@ public class SettingPlayerFragment extends BaseFragment implements UaListener, B
     private void setAutoSkipIntroOutro(View view) {
         Setting.putIntroSkipMode((Setting.getIntroSkipMode() + 1) % introSkipMode.length);
         mBinding.autoSkipIntroOutroText.setText(introSkipMode[Setting.getIntroSkipMode()]);
+    }
+
+    private void onFlagPlay(View view) {
+        new MaterialAlertDialogBuilder(requireActivity()).setTitle(R.string.player_flag).setNegativeButton(R.string.dialog_negative, null).setSingleChoiceItems(flagPlay, PlayerSetting.getFlagPlay(), (dialog, which) -> {
+            mBinding.flagPlayText.setText(flagPlay[which]);
+            PlayerSetting.putFlagPlay(which);
+            dialog.dismiss();
+        }).show();
     }
 
     private void setRender(View view) {

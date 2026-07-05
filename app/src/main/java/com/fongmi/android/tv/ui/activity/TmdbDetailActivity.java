@@ -566,7 +566,7 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
                 selectedEpisode = episode;
                 episodeAdapter.setSelected(episode);
                 updatePlayLabel();
-                onPlay();
+                if (PlayerSetting.isEpisodeAutoPlay()) onPlay();
             }
 
             @Override
@@ -2950,7 +2950,7 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
                 resetEpisodeRange();
                 renderFlagSelection();
                 renderEpisodes();
-                if (isFusionMode()) onPlay();
+                if (isFusionMode() && PlayerSetting.isFlagAutoPlay()) onPlay();
             });
             binding.flagContainer.addView(button);
         }
@@ -6379,7 +6379,7 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
         fetchSeasonIfNeeded(selectedSeasonNumber);
         renderEpisodes();
         updatePlayLabel();
-        onPlay();
+        if (PlayerSetting.isEpisodeAutoPlay()) onPlay();
     }
 
     private void toggleInlineFullscreen() {

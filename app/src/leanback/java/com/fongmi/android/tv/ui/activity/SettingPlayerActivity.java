@@ -43,6 +43,7 @@ public class SettingPlayerActivity extends BaseActivity implements UaListener, B
     private String[] scale;
     private String[] osd;
     private String[] introSkipMode;
+    private String[] flagPlay;
 
     public static void start(Activity activity) {
         activity.startActivity(new Intent(activity, SettingPlayerActivity.class));
@@ -76,6 +77,7 @@ public class SettingPlayerActivity extends BaseActivity implements UaListener, B
         setPreloadText();
         mBinding.autoChangeText.setText(getSwitch(PlayerSetting.isAutoChange()));
         mBinding.autoSkipIntroOutroText.setText((introSkipMode = getResources().getStringArray(R.array.select_auto_skip_intro_outro))[Setting.getIntroSkipMode()]);
+        mBinding.flagPlayText.setText((flagPlay = getResources().getStringArray(R.array.select_flag))[PlayerSetting.getFlagPlay()]);
         mBinding.backgroundText.setText(getSwitch(PlayerSetting.isBackgroundOn()));
         mBinding.musicNotificationText.setText(getSwitch(PlayerSetting.isMusicNotification()));
         mBinding.audioBookNotificationText.setText(getSwitch(PlayerSetting.isAudioBookNotification()));
@@ -110,6 +112,7 @@ public class SettingPlayerActivity extends BaseActivity implements UaListener, B
         mBinding.preloadTime.setOnClickListener(this::setPreloadTime);
         mBinding.autoChange.setOnClickListener(this::setAutoChange);
         mBinding.autoSkipIntroOutro.setOnClickListener(this::setAutoSkipIntroOutro);
+        mBinding.flagPlay.setOnClickListener(this::setFlagPlay);
         mBinding.render.setOnClickListener(this::setRender);
         mBinding.tunnel.setOnClickListener(this::setTunnel);
         mBinding.exo4kCompat.setOnClickListener(this::setExo4KCompat);
@@ -273,6 +276,11 @@ public class SettingPlayerActivity extends BaseActivity implements UaListener, B
     private void setAutoSkipIntroOutro(View view) {
         Setting.putIntroSkipMode((Setting.getIntroSkipMode() + 1) % introSkipMode.length);
         mBinding.autoSkipIntroOutroText.setText(introSkipMode[Setting.getIntroSkipMode()]);
+    }
+
+    private void setFlagPlay(View view) {
+        PlayerSetting.putFlagPlay((PlayerSetting.getFlagPlay() + 1) % flagPlay.length);
+        mBinding.flagPlayText.setText(flagPlay[PlayerSetting.getFlagPlay()]);
     }
 
     private void setRender(View view) {
