@@ -1,0 +1,16 @@
+diff --git a/libraries/exoplayer/src/main/java/androidx/media3/exoplayer/source/preload/PreCacheHelper.java b/libraries/exoplayer/src/main/java/androidx/media3/exoplayer/source/preload/PreCacheHelper.java
+index 145f4a1c2c0..b7e5d1f2a9 100644
+--- a/libraries/exoplayer/src/main/java/androidx/media3/exoplayer/source/preload/PreCacheHelper.java
++++ b/libraries/exoplayer/src/main/java/androidx/media3/exoplayer/source/preload/PreCacheHelper.java
+@@ -459,6 +459,11 @@ public final class PreCacheHelper {
+       checkState(Looper.myLooper() == preCacheHandler.getLooper());
+       checkState(helper == this.downloadHelper);
+       isPreparationOngoing = false;
++      synchronized (lock) {
++        if (isCanceled) {
++          return;
++        }
++      }
+       DownloadRequest downloadRequest =
+           helper.getDownloadRequest(/* data= */ null, startPositionMs, durationMs);
+       downloadHelper.release();
