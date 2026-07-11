@@ -381,16 +381,23 @@ public class TmdbDetailActivityLayoutTest {
     }
 
     @Test
-    public void fusionDetailBackdropCropsToFillScreen() throws Exception {
+    public void backdropStartsBelowPlayerAndFillsWidth() throws Exception {
         Path sourcePath = findMainJavaPath().resolve(Path.of("com", "fongmi", "android", "tv", "ui", "activity", "TmdbDetailActivity.java"));
         String source = new String(Files.readAllBytes(sourcePath), StandardCharsets.UTF_8);
-        int method = source.indexOf("private boolean shouldCropBackdrop()");
-        assertTrue(sourcePath + " is missing shouldCropBackdrop", method >= 0);
 
-        int methodEnd = source.indexOf("\n    }", method);
-        String body = source.substring(method, methodEnd);
-        assertTrue("Fusion detail must center-crop artwork so portrait screens do not show top/bottom background bars",
-                body.contains("return true;"));
+        int scaleType = source.indexOf("private ImageView.ScaleType backdropScaleType()");
+        assertTrue(sourcePath + " is missing backdropScaleType", scaleType >= 0);
+        String scaleBody = source.substring(scaleType, source.indexOf("\n    }", scaleType));
+        assertTrue("Backdrop must use MATRIX scaleType for self-controlled positioning",
+                scaleBody.contains("ScaleType.MATRIX"));
+
+        int matrix = source.indexOf("private void applyBackdropMatrix(");
+        assertTrue(sourcePath + " is missing applyBackdropMatrix", matrix >= 0);
+        String matrixBody = source.substring(matrix, source.indexOf("\n    }", matrix));
+        assertTrue("Backdrop must scale by width so it fills edge-to-edge with no ambient side bars",
+                matrixBody.contains("vw / (float) dw"));
+        assertTrue("Backdrop must offset downward by the player-bottom inset so artwork starts below the player",
+                matrixBody.contains("backdropTopInset()") && matrixBody.contains("postTranslate(0f, top)"));
     }
 
     @Test

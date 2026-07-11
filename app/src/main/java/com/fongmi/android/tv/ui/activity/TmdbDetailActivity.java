@@ -6,11 +6,12 @@ import android.content.pm.ActivityInfo;
 import android.content.res.ColorStateList;
 import android.content.res.Configuration;
 import android.content.Intent;
+import android.graphics.Bitmap;
 import android.graphics.Color;
+import android.graphics.Matrix;
 import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
-import android.graphics.drawable.LayerDrawable;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.SystemClock;
@@ -36,8 +37,10 @@ import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AlertDialog;
+import androidx.core.graphics.ColorUtils;
 import androidx.core.widget.NestedScrollView;
 import androidx.core.view.ViewCompat;
+import androidx.palette.graphics.Palette;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
@@ -347,6 +350,9 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
     private String backdropSlidePrimary = "";
     private ImageView backdropSlideVisibleView;
     private ImageView backdropSlideLoadingView;
+    private static final int NO_AMBIENT_COLOR = 0;
+    private int backdropAmbientColor = NO_AMBIENT_COLOR;
+    private String backdropAmbientSource = "";
 
     @Override
     public TmdbItem getMatchedTmdbItem() {
@@ -600,6 +606,12 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
         applyDetailTemplate();
         initFusionPlayer();
         binding.episodeEmpty.setText(R.string.detail_source_episode_empty);
+        // backdrop 尺寸变化（旋转 / topMargin 推移 / 播放器面板高度变）时重算矩阵，保持按高铺满 + 水平居中。
+        View.OnLayoutChangeListener backdropMatrixRelayout = (view, l, t, r, b, ol, ot, or, ob) -> {
+            if (r - l != or - ol || b - t != ob - ot) applyBackdropMatrix((ImageView) view);
+        };
+        binding.backdropFill.addOnLayoutChangeListener(backdropMatrixRelayout);
+        binding.backdrop.addOnLayoutChangeListener(backdropMatrixRelayout);
         bindInitialArtwork();
         episodeAdapter = new TmdbEpisodeAdapter(new TmdbEpisodeAdapter.Listener() {
             @Override
@@ -944,6 +956,10 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
         binding.playerPanel.setOnFocusChangeListener((view, focused) -> updatePlayerPanelFocus());
         binding.playerPanel.addOnLayoutChangeListener((view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
             if (!inlinePiPSourceFrozen) updateInlinePiPSource(view);
+            if (bottom != oldBottom || top != oldTop) {
+                alignBackdropBelowPlayer();
+                binding.backdropShade.setBackground(backdropShade(currentThemeColors()));
+            }
         });
         setupInlineControlFocus();
         setupInlineFocusNavigation();
@@ -1365,7 +1381,8 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
         applyBackdropSurface(colors);
         binding.backdropFill.setAlpha(backdropSlideAlpha());
         binding.backdrop.setAlpha(backdropSlideAlpha());
-        binding.backdropShade.setBackground(isCinemaMode() ? cinemaBackdropShade() : TmdbDetailLayoutUtils.colorDrawable(colors.backdropShade));
+        alignBackdropBelowPlayer();
+        binding.backdropShade.setBackground(backdropShade(colors));
         setCard(binding.contentPanel, colors.panel, colors.line);
         setPlayerCard(colors);
         setCard(binding.tmdbPanel, colors.panel, colors.line);
@@ -1595,35 +1612,137 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
         }
     }
 
-    private Drawable cinemaBackdropShade() {
-        if (lightTheme) return cinemaLightBackdropShade();
-        boolean compact = isCompactWidth();
-        GradientDrawable horizontal = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, compact ? new int[]{
-                0xEC090B0F, 0xD6090B0F, 0x78090B0F, 0x42090B0F, 0x96090B0F
-        } : new int[]{
-                0xF2090B0F, 0xDC090B0F, 0x82090B0F, 0x48090B0F, 0xA6090B0F
-        });
-        GradientDrawable vertical = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, compact ? new int[]{
-                0x10090B0F, 0x26090B0F, 0xA6090B0F, 0xE6090B0F
-        } : new int[]{
-                0x12090B0F, 0x2D090B0F, 0xB8090B0F, 0xF0090B0F
-        });
-        return new LayerDrawable(new Drawable[]{horizontal, vertical});
+    // 侧路加载缩略图取色，不阻塞主图显示。取到色后压暗降饱和作为氛围底锚点。
+    private void requestBackdropAmbient(String image) {
+        String highResImage = highResTmdbImage(image);
+        if (TextUtils.isEmpty(highResImage)) {
+            resetBackdropAmbient();
+            return;
+        }
+        if (TextUtils.equals(highResImage, backdropAmbientSource) && backdropAmbientColor != NO_AMBIENT_COLOR) return;
+        Object model = ImgUtil.getUrl(highResImage);
+        if (model == null) {
+            resetBackdropAmbient();
+            return;
+        }
+        backdropAmbientSource = highResImage;
+        try {
+            Glide.with(this).asBitmap().load(model).override(64, 64).into(new CustomTarget<Bitmap>() {
+                @Override
+                public void onResourceReady(@NonNull Bitmap resource, @Nullable Transition<? super Bitmap> transition) {
+                    if (!TextUtils.equals(highResImage, backdropAmbientSource) || !canTouchUi()) return;
+                    applyBackdropAmbient(resolveBackdropAmbientColor(resource));
+                }
+
+                @Override
+                public void onLoadCleared(@Nullable Drawable placeholder) {
+                }
+
+                @Override
+                public void onLoadFailed(@Nullable Drawable errorDrawable) {
+                    if (TextUtils.equals(highResImage, backdropAmbientSource)) resetBackdropAmbient();
+                }
+            });
+        } catch (Throwable ignored) {
+            resetBackdropAmbient();
+        }
     }
 
-    private Drawable cinemaLightBackdropShade() {
-        boolean compact = isCompactWidth();
-        GradientDrawable horizontal = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, compact ? new int[]{
-                0xB8F4F7FA, 0x99F4F7FA, 0x55F4F7FA, 0x24F4F7FA, 0x70F4F7FA
-        } : new int[]{
-                0x99F4F7FA, 0x80F4F7FA, 0x40F4F7FA, 0x1AF4F7FA, 0x55F4F7FA
-        });
-        GradientDrawable vertical = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, compact ? new int[]{
-                0x0AF4F7FA, 0x18F4F7FA, 0x55F4F7FA, 0x99F4F7FA
-        } : new int[]{
-                0x04F4F7FA, 0x0FF4F7FA, 0x3DF4F7FA, 0x70F4F7FA
-        });
-        return new LayerDrawable(new Drawable[]{horizontal, vertical});
+    // 取主色做氛围底：dominant 优先（稳），无则 vibrant，再无回退主题深色。向黑混合压暗保白字对比度。
+    private int resolveBackdropAmbientColor(Bitmap bitmap) {
+        if (bitmap == null || bitmap.isRecycled()) return NO_AMBIENT_COLOR;
+        try {
+            Palette palette = Palette.from(bitmap).maximumColorCount(8).generate();
+            Palette.Swatch swatch = palette.getDominantSwatch();
+            if (swatch == null) swatch = palette.getVibrantSwatch();
+            if (swatch == null) swatch = palette.getMutedSwatch();
+            if (swatch == null) return NO_AMBIENT_COLOR;
+            float blend = lightTheme ? 0.55f : 0.68f;
+            int base = lightTheme ? 0xFFFFFFFF : 0xFF000000;
+            return 0xFF000000 | (ColorUtils.blendARGB(swatch.getRgb(), base, blend) & 0x00FFFFFF);
+        } catch (Throwable e) {
+            return NO_AMBIENT_COLOR;
+        }
+    }
+
+    private void resetBackdropAmbient() {
+        backdropAmbientSource = "";
+        applyBackdropAmbient(NO_AMBIENT_COLOR);
+    }
+
+    // 取色结果收口：刷新 shade 渐变顶色 + hero 底色。三处调用（首图/轮播换图/取色回调）共用。
+    private void applyBackdropAmbient(int color) {
+        if (binding == null) return;
+        backdropAmbientColor = color;
+        refreshBackdropSurface();
+        alignBackdropBelowPlayer();
+        binding.backdropShade.setBackground(backdropShade(currentThemeColors()));
+    }
+
+    // 氛围底锚点色：取色成功用取色，否则回退主题深色/浅色。
+    private int ambientAnchorColor(ThemeColors colors) {
+        if (backdropAmbientColor != NO_AMBIENT_COLOR) return backdropAmbientColor;
+        return 0xFF000000 | (colors.background & 0x00FFFFFF);
+    }
+
+    // ImageView 保持全屏（topMargin=0），海报「从播放器下方开始」的定位改由 applyBackdropMatrix 的矩阵完成，
+    // 避开 match_parent+margin 的测量时机 bug。此处只在尺寸/面板变化时触发矩阵重算。
+    private void alignBackdropBelowPlayer() {
+        if (binding == null) return;
+        applyBackdropMatrix(binding.backdropFill);
+        applyBackdropMatrix(binding.backdrop);
+    }
+
+    // 播放器底缘在 hero 坐标系中的 y：海报从这里开始向下绘制，上方留给取色渐变。
+    // 只要有可见的内嵌播放器就推（融合/原生增强直放都适用）；全屏/画中画/无播放器时返回 0，海报占满 hero。
+    private int backdropTopInset() {
+        if (binding == null || inlineFullscreen || inlinePiPLayout) return 0;
+        View panel = binding.playerPanel;
+        if (panel.getVisibility() != View.VISIBLE || panel.getHeight() <= 0) return 0;
+        // playerPanel 在 scroll 内、backdrop 在 hero 内，父容器不同，换算到 hero 坐标系取播放器底边。
+        int[] panelLoc = new int[2];
+        int[] heroLoc = new int[2];
+        panel.getLocationOnScreen(panelLoc);
+        binding.hero.getLocationOnScreen(heroLoc);
+        int panelBottomInHero = panelLoc[1] - heroLoc[1] + panel.getHeight();
+        return Math.max(0, panelBottomInHero);
+    }
+
+    // 顶部取色遮罩：播放器上方整段保持不透明取色，海报上沿一小段「取色→透明」淡入溶进接缝，下方露出海报。
+    // 无内嵌播放器时（topInset=0）退回整屏轻渐变，避免海报生硬平铺。
+    private Drawable backdropShade(ThemeColors colors) {
+        int rgb = ambientAnchorColor(colors) & 0x00FFFFFF;
+        int topInset = backdropTopInset();
+        int heroHeight = binding == null ? 0 : binding.hero.getHeight();
+        if (topInset <= 0 || heroHeight <= topInset) {
+            boolean compact = isCompactWidth();
+            int[] alphas = compact
+                    ? new int[]{0xE6, 0x9E, 0x54, 0x24, 0x10, 0x24, 0x54}
+                    : new int[]{0xC8, 0x7A, 0x40, 0x1C, 0x0C, 0x1C, 0x40};
+            return verticalShade(rgb, alphas);
+        }
+        // 播放器下方海报：上沿短距离淡入。GradientDrawable 颜色均匀分布，用多段近似拐点。
+        int steps = 24;
+        float insetRatio = topInset / (float) heroHeight;
+        float fadeSpan = Math.max(0.04f, ResUtil.dp2px(40) / (float) heroHeight);
+        int[] alphas = new int[steps + 1];
+        for (int i = 0; i <= steps; i++) {
+            float p = i / (float) steps;
+            float a;
+            if (p <= insetRatio) a = 1f;                          // 播放器上方 + 海报上沿：不透明取色
+            else if (p >= insetRatio + fadeSpan) a = 0f;          // 淡入结束：全透明露海报
+            else a = 1f - (p - insetRatio) / fadeSpan;            // 中间线性淡出
+            alphas[i] = Math.round(a * 0xFF);
+        }
+        return verticalShade(rgb, alphas);
+    }
+
+    private GradientDrawable verticalShade(int rgb, int[] alphas) {
+        int[] gradient = new int[alphas.length];
+        for (int i = 0; i < alphas.length; i++) gradient[i] = ((alphas[i] & 0xFF) << 24) | rgb;
+        GradientDrawable drawable = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, gradient);
+        drawable.setGradientType(GradientDrawable.LINEAR_GRADIENT);
+        return drawable;
     }
 
     private void tintInlineControl(View view) {
@@ -2626,6 +2745,9 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
     private void bindBackdropImage(String title, String backdrop, String fallback) {
         boolean hasBackdrop = !TextUtils.isEmpty(backdrop) && !TextUtils.equals(backdrop, fallback);
         String image = hasBackdrop ? backdrop : fallback;
+        // 新详情绑定前清掉上一次的氛围色，避免换剧目时残留旧底色；取色回调稍后重新填充。
+        backdropAmbientColor = NO_AMBIENT_COLOR;
+        backdropAmbientSource = "";
         refreshBackdropSurface();
         binding.hero.setVisibility(TextUtils.isEmpty(image) && !useAppWallpaperBackdrop() ? View.GONE : View.VISIBLE);
         cancelBackdropSlideRequest();
@@ -2651,6 +2773,7 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
         binding.backdrop.setVisibility(View.INVISIBLE);
         ImgUtil.clear(binding.backdrop);
         loadBackdropImage(title, highResImage, binding.backdropFill);
+        requestBackdropAmbient(highResImage);
     }
 
     private void loadBackdropImage(String title, String image, ImageView target) {
@@ -2661,15 +2784,28 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
                 ImgUtil.clear(target);
                 return;
             }
+            target.setScaleType(ImageView.ScaleType.MATRIX);
             target.setTag(R.id.image, highResImage);
-            com.bumptech.glide.RequestBuilder<Drawable> request = Glide.with(target)
+            // 不加 centerCrop/fitCenter transform：保留原图宽高比，缩放与定位交给 applyBackdropMatrix。
+            Glide.with(target)
                     .load(model)
                     .diskCacheStrategy(DiskCacheStrategy.ALL)
-                    .dontAnimate();
-            request = shouldCropBackdrop() ? request.centerCrop() : request.fitCenter();
-            request.into(target);
+                    .dontAnimate()
+                    .listener(new RequestListener<Drawable>() {
+                        @Override
+                        public boolean onLoadFailed(@Nullable GlideException e, Object model, @NonNull Target<Drawable> t, boolean isFirstResource) {
+                            return false;
+                        }
+
+                        @Override
+                        public boolean onResourceReady(Drawable resource, Object model, Target<Drawable> t, DataSource dataSource, boolean isFirstResource) {
+                            target.post(() -> applyBackdropMatrix(target));
+                            return false;
+                        }
+                    })
+                    .into(target);
         } catch (Throwable e) {
-            ImgUtil.load(title, highResTmdbImage(image), target, shouldCropBackdrop());
+            ImgUtil.load(title, highResTmdbImage(image), target, false);
         }
     }
 
@@ -2733,12 +2869,12 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
         backdropSlideLoading = true;
         backdropSlideLoadingView = targetView;
         try {
-            com.bumptech.glide.RequestBuilder<Drawable> request = Glide.with(this)
+            // 不加 centerCrop/fitCenter transform：保留原图宽高比，缩放与定位由 applyBackdropMatrix 接管。
+            Glide.with(this)
                     .load(model)
                     .diskCacheStrategy(DiskCacheStrategy.ALL)
-                    .dontAnimate();
-            request = shouldCropBackdrop() ? request.centerCrop() : request.fitCenter();
-            request.listener(new RequestListener<Drawable>() {
+                    .dontAnimate()
+                    .listener(new RequestListener<Drawable>() {
                         @Override
                         public boolean onLoadFailed(@Nullable GlideException e, Object model, @NonNull Target<Drawable> target, boolean isFirstResource) {
                             targetView.post(() -> onBackdropSlideFailed(generation, next, url));
@@ -2765,7 +2901,29 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
     }
 
     private ImageView.ScaleType backdropScaleType() {
-        return shouldCropBackdrop() ? ImageView.ScaleType.CENTER_CROP : ImageView.ScaleType.FIT_CENTER;
+        // MATRIX：自控缩放，按高度撑满可视区、水平居中。宽于区域只裁左右，窄于区域两侧露取色底，永不裁上下（人物头脚完整）。
+        return ImageView.ScaleType.MATRIX;
+    }
+
+    // fit-height + 水平居中：图高缩放到与可视区等高（绝不裁上下），宽度超出居中裁左右、不足则两侧对称露出取色底。
+    // 海报绘制到「播放器下方」区域：ImageView 保持全屏，用矩阵把图按屏宽铺满、顶部落在播放器底缘。
+    // 海报左右到边不留取色条；因按宽缩放而变高，向下延伸到内容区之后（半透明内容盖在其上）。
+    // 播放器上方仍露出下层取色底（由 backdropShade 染色）。用矩阵而非 topMargin 定位，避开测量时机 bug。
+    private void applyBackdropMatrix(ImageView view) {
+        if (view == null) return;
+        Drawable drawable = view.getDrawable();
+        if (drawable == null) return;
+        int dw = drawable.getIntrinsicWidth();
+        int dh = drawable.getIntrinsicHeight();
+        int vw = view.getWidth() - view.getPaddingLeft() - view.getPaddingRight();
+        int vh = view.getHeight() - view.getPaddingTop() - view.getPaddingBottom();
+        if (dw <= 0 || dh <= 0 || vw <= 0 || vh <= 0) return;
+        int top = backdropTopInset();
+        float scale = vw / (float) dw;               // 按屏宽铺满 → 海报左右到边，无取色条
+        Matrix matrix = new Matrix();
+        matrix.setScale(scale, scale);
+        matrix.postTranslate(0f, top);               // 顶部推到播放器底缘之下，海报向下延伸
+        view.setImageMatrix(matrix);
     }
 
     private void onBackdropSlideReady(int generation, int index, String url, ImageView targetView) {
@@ -2778,11 +2936,14 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
         backdropSlideVisibleView = targetView;
         targetView.setTag(R.id.image, url);
         targetView.setAlpha(backdropSlideAlpha());
+        targetView.setScaleType(ImageView.ScaleType.MATRIX);
         targetView.setVisibility(View.VISIBLE);
+        applyBackdropMatrix(targetView);
         if (oldView != targetView) {
             oldView.setVisibility(View.INVISIBLE);
             ImgUtil.clear(oldView);
         }
+        requestBackdropAmbient(url);
         scheduleBackdropSlide(BACKDROP_SLIDE_DELAY_MS);
     }
 
@@ -2854,9 +3015,6 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
         return !Util.isMobile() || ResUtil.isPad() || ResUtil.getScreenWidth(this) >= ResUtil.getScreenHeight(this);
     }
 
-    private boolean shouldCropBackdrop() {
-        return true;
-    }
 
     private ThemeColors currentThemeColors() {
         ThemeColors colors = lightTheme ? ThemeColors.light() : ThemeColors.dark();
@@ -2869,10 +3027,14 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
 
     private void applyBackdropSurface(ThemeColors colors) {
         int backdropBackground = useAppWallpaperBackdrop() ? Color.TRANSPARENT : backdropFallbackBackground(colors);
-        binding.root.setBackgroundColor(backdropBackground);
-        binding.hero.setBackgroundColor(backdropBackground);
-        binding.backdropFill.setBackgroundColor(backdropBackground);
-        binding.backdrop.setBackgroundColor(backdropBackground);
+        // 已匹配 TMDB 且取到氛围色时，root/hero 底铺取色锚点，让渐变淡出端与整块 hero 连成一体；
+        // 未匹配走 app 壁纸（transparent）分支不动。fill/backdrop 保持深色底避免透出下层。
+        int surface = useAppWallpaperBackdrop() ? backdropBackground : ambientAnchorColor(colors);
+        binding.root.setBackgroundColor(surface);
+        binding.hero.setBackgroundColor(surface);
+        // 两层 backdrop 背景透明：海报只画在播放器下方矩阵区，上方 + 左右不足处透出 hero 取色底（渐变淡出端连成一体）。
+        binding.backdropFill.setBackgroundColor(Color.TRANSPARENT);
+        binding.backdrop.setBackgroundColor(Color.TRANSPARENT);
     }
 
     private boolean useAppWallpaperBackdrop() {
